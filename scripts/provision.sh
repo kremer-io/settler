@@ -14,34 +14,11 @@ apt-get -y upgrade
 echo "LC_ALL=en_US.UTF-8" >> /etc/default/locale
 locale-gen en_US.UTF-8
 
-# Install Some PPAs
-
-apt-get install -y software-properties-common curl
-
-apt-add-repository ppa:nginx/development -y
-apt-add-repository ppa:chris-lea/redis-server -y
-apt-add-repository ppa:ondrej/php -y
-
-# gpg: key 5072E1F5: public key "MySQL Release Engineering <mysql-build@oss.oracle.com>" imported
-apt-key adv --keyserver ha.pool.sks-keyservers.net --recv-keys 5072E1F5
-sh -c 'echo "deb http://repo.mysql.com/apt/ubuntu/ trusty mysql-5.7" >> /etc/apt/sources.list.d/mysql.list'
-
-wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | apt-key add -
-sh -c 'echo "deb http://apt.postgresql.org/pub/repos/apt/ trusty-pgdg main" >> /etc/apt/sources.list.d/postgresql.list'
-
-curl -s https://packagecloud.io/gpg.key | apt-key add -
-echo "deb http://packages.blackfire.io/debian any main" | tee /etc/apt/sources.list.d/blackfire.list
-
-curl --silent --location https://deb.nodesource.com/setup_6.x | bash -
-
-# Update Package Lists
-
-apt-get update
-
 # Install Some Basic Packages
 
 apt-get install -y build-essential dos2unix gcc git libmcrypt4 libpcre3-dev \
-make python2.7-dev python-pip re2c supervisor unattended-upgrades whois vim libnotify-bin
+make python2.7-dev python-pip re2c supervisor unattended-upgrades whois vim \
+libnotify-bin curl
 
 # Set My Timezone
 
@@ -49,11 +26,9 @@ ln -sf /usr/share/zoneinfo/UTC /etc/localtime
 
 # Install PHP Stuffs
 
-apt-get install -y --force-yes php7.0-cli php7.0-dev \
-php-pgsql php-sqlite3 php-gd php-apcu \
-php-curl php7.0-mcrypt \
-php-imap php-mysql php-memcached php7.0-readline php-xdebug \
-php-mbstring php-xml php7.0-zip php7.0-intl php7.0-bcmath php-soap
+apt-get install -y --force-yes php-bcmath php-curl php-gd php-imagick php-intl \
+php-mbstring php-mcrypt openssl php-xml php-simplexml php-soap php-xsl \
+php-zip php-json php-iconv php-mysql php-memcached php-xdebug php-cli
 
 # Install Composer
 
@@ -80,28 +55,11 @@ sudo sed -i "s/;date.timezone.*/date.timezone = UTC/" /etc/php/7.0/cli/php.ini
 
 # Install Nginx & PHP-FPM
 
-apt-get install -y --force-yes nginx php7.0-fpm
+apt-get install -y --force-yes nginx php-fpm
 
 rm /etc/nginx/sites-enabled/default
 rm /etc/nginx/sites-available/default
 service nginx restart
-
-# Add The HHVM Key & Repository
-
-wget -O - http://dl.hhvm.com/conf/hhvm.gpg.key | apt-key add -
-echo deb http://dl.hhvm.com/ubuntu trusty main | tee /etc/apt/sources.list.d/hhvm.list
-apt-get update
-apt-get install -y hhvm
-
-# Configure HHVM To Run As Homestead
-
-service hhvm stop
-sed -i 's/#RUN_AS_USER="www-data"/RUN_AS_USER="vagrant"/' /etc/default/hhvm
-service hhvm start
-
-# Start HHVM On System Start
-
-update-rc.d hhvm defaults
 
 # Setup Some PHP-FPM Options
 
@@ -122,30 +80,6 @@ sed -i "s/;date.timezone.*/date.timezone = UTC/" /etc/php/7.0/fpm/php.ini
 
 sudo phpdismod -s cli xdebug
 
-# Copy fastcgi_params to Nginx because they broke it on the PPA
-
-cat > /etc/nginx/fastcgi_params << EOF
-fastcgi_param	QUERY_STRING		\$query_string;
-fastcgi_param	REQUEST_METHOD		\$request_method;
-fastcgi_param	CONTENT_TYPE		\$content_type;
-fastcgi_param	CONTENT_LENGTH		\$content_length;
-fastcgi_param	SCRIPT_FILENAME		\$request_filename;
-fastcgi_param	SCRIPT_NAME		\$fastcgi_script_name;
-fastcgi_param	REQUEST_URI		\$request_uri;
-fastcgi_param	DOCUMENT_URI		\$document_uri;
-fastcgi_param	DOCUMENT_ROOT		\$document_root;
-fastcgi_param	SERVER_PROTOCOL		\$server_protocol;
-fastcgi_param	GATEWAY_INTERFACE	CGI/1.1;
-fastcgi_param	SERVER_SOFTWARE		nginx/\$nginx_version;
-fastcgi_param	REMOTE_ADDR		\$remote_addr;
-fastcgi_param	REMOTE_PORT		\$remote_port;
-fastcgi_param	SERVER_ADDR		\$server_addr;
-fastcgi_param	SERVER_PORT		\$server_port;
-fastcgi_param	SERVER_NAME		\$server_name;
-fastcgi_param	HTTPS			\$https if_not_empty;
-fastcgi_param	REDIRECT_STATUS		200;
-EOF
-
 # Set The Nginx & PHP-FPM User
 
 sed -i "s/user www-data;/user vagrant;/" /etc/nginx/nginx.conf
@@ -159,7 +93,7 @@ sed -i "s/listen\.group.*/listen.group = vagrant/" /etc/php/7.0/fpm/pool.d/www.c
 sed -i "s/;listen\.mode.*/listen.mode = 0666/" /etc/php/7.0/fpm/pool.d/www.conf
 
 service nginx restart
-service php7.0-fpm restart
+service php-fpm restart
 
 # Add Vagrant User To WWW-Data
 
@@ -177,18 +111,17 @@ apt-get install -y nodejs
 
 apt-get install -y sqlite3 libsqlite3-dev
 
-# Install MySQL
+# Set The Automated Root Password
 
-debconf-set-selections <<< "mysql-community-server mysql-community-server/data-dir select ''"
-debconf-set-selections <<< "mysql-community-server mysql-community-server/root-pass password secret"
-debconf-set-selections <<< "mysql-community-server mysql-community-server/re-root-pass password secret"
-apt-get install -y mysql-server
+debconf-set-selections <<< "mariadb-server-10.1 mysql-server/data-dir select ''"
+debconf-set-selections <<< "mariadb-server-10.1 mysql-server/root_password password secret"
+debconf-set-selections <<< "mariadb-server-10.1 mysql-server/root_password_again password secret"
 
-# Configure MySQL Password Lifetime
+# Install MariaDB
 
-echo "default_password_lifetime = 0" >> /etc/mysql/my.cnf
+apt-get install -y mariadb-server
 
-# Configure MySQL Remote Access
+# Configure Maria Remote Access
 
 sed -i '/^bind-address/s/bind-address.*=.*/bind-address = 0.0.0.0/' /etc/mysql/my.cnf
 
@@ -199,28 +132,7 @@ mysql --user="root" --password="secret" -e "CREATE USER 'homestead'@'0.0.0.0' ID
 mysql --user="root" --password="secret" -e "GRANT ALL ON *.* TO 'homestead'@'0.0.0.0' IDENTIFIED BY 'secret' WITH GRANT OPTION;"
 mysql --user="root" --password="secret" -e "GRANT ALL ON *.* TO 'homestead'@'%' IDENTIFIED BY 'secret' WITH GRANT OPTION;"
 mysql --user="root" --password="secret" -e "FLUSH PRIVILEGES;"
-mysql --user="root" --password="secret" -e "CREATE DATABASE homestead;"
 service mysql restart
-
-# Add Timezone Support To MySQL
-
-mysql_tzinfo_to_sql /usr/share/zoneinfo | mysql --user=root --password=secret mysql
-
-# Install Postgres
-
-apt-get install -y postgresql-9.5 postgresql-contrib-9.5
-
-# Configure Postgres Remote Access
-
-sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/g" /etc/postgresql/9.5/main/postgresql.conf
-echo "host    all             all             10.0.2.2/32               md5" | tee -a /etc/postgresql/9.5/main/pg_hba.conf
-sudo -u postgres psql -c "CREATE ROLE homestead LOGIN UNENCRYPTED PASSWORD 'secret' SUPERUSER INHERIT NOCREATEDB NOCREATEROLE NOREPLICATION;"
-sudo -u postgres /usr/bin/createdb --echo --owner=homestead homestead
-service postgresql restart
-
-# Install Blackfire
-
-apt-get install -y blackfire-agent blackfire-php
 
 # Install A Few Other Things
 
